@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:google_sign_in/google_sign_in.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'auth_service.dart';
-import 'post_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,46 +11,93 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  GoogleSignInAccount? _currentUser;
-  final AuthService _authService = AuthService();
+  List posts = [];
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _authService.googleSignIn.onCurrentUserChanged.listen((GoogleSignInAccount? account) {
+    fetchPosts();
+  }
+
+  fetchPosts() async {
+    final response = await http.get(
+      Uri.parse('https://jsonplaceholder.typicode.com/posts'),
+      headers: {"Content-type": "application/json"},
+    );
+
+    if (response.statusCode == 200) {
       setState(() {
-        _currentUser = account;
+        posts = json.decode(response.body);
+        isLoading = false;
       });
-    });
-    _authService.googleSignIn.signInSilently();
+    } else {
+      throw Exception('Failed to load posts');
+    }
+  }
+
+  fetchPostById(int id) async {
+    final response = await http.get(
+      Uri.parse('https://jsonplaceholder.typicode.com/posts/$id'),
+      headers: {"Content-type": "application/json"},
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        posts = [json.decode(response.body)];
+        isLoading = false;
+      });
+    } else {
+      throw Exception('Failed to load post');
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('HI Bank Test'),
-        actions: <Widget>[
-          _currentUser != null
-              ? IconButton(
-                  icon: const Icon(Icons.exit_to_app),
-                  onPressed: () async {
-                    await _authService.signOut();
-                  },
-                )
-              : Container()
+        title: const Text('Posts'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await AuthService().signOut();
+            },
+          )
         ],
       ),
-      body: Center(
-        child: _currentUser != null
-            ? const PostsPage()
-            : ElevatedButton(
-                child: const Text('Login with Google'),
-                onPressed: () async {
-                  await _authService.signInWithGoogle();
-                },
-              ),
-      ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Search by ID',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onSubmitted: (value) {
+                      if (value.isNotEmpty) {
+                        fetchPostById(int.parse(value));
+                      }
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: posts.length,
+                    itemBuilder: (context, index) {
+                      return ListTile(
+                        title: Text(posts[index]['title']),
+                        subtitle: Text(posts[index]['body']),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }
